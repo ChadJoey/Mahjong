@@ -197,34 +197,33 @@ void FShantenCalculator::BuildConfigsRecursive(TArray<uint8> CurrentConfig, int3
 	for (int32 pos = StartPos; pos < 9; ++pos)
 	{
 		// Try placing a triplet (3 of the same tile)
-		if (TripletsLeft > 0 && CurrentConfig[pos] == 0)
+		if (TripletsLeft > 0 && CurrentConfig[pos] + 3 <= 4)
 		{
-			CurrentConfig[pos] = 3;
+			CurrentConfig[pos] += 3;
 			BuildConfigsRecursive(CurrentConfig, TripletsLeft - 1, bPairNeeded, pos + 1, bAllowSequences, OutResults);
-			CurrentConfig[pos] = 0;
+			CurrentConfig[pos] -= 3;
 		}
 
 		// Try placing a sequence (only if allowed and position permits)
-		if (bAllowSequences && TripletsLeft > 0 && pos <= 6)
+		if (bAllowSequences && TripletsLeft > 0 && pos + 2 < 9
+			&& CurrentConfig[pos] + 1 <= 4
+			&& CurrentConfig[pos + 1] + 1 <= 4
+			&& CurrentConfig[pos + 2] + 1 <= 4)
 		{
-			if (CurrentConfig[pos] == 0 && CurrentConfig[pos + 1] == 0 && CurrentConfig[pos + 2] == 0)
-			{
-				CurrentConfig[pos] = 1;
-				CurrentConfig[pos + 1] = 1;
-				CurrentConfig[pos + 2] = 1;
-				BuildConfigsRecursive(CurrentConfig, TripletsLeft - 1, bPairNeeded, pos + 1, bAllowSequences, OutResults);
-				CurrentConfig[pos] = 0;
-				CurrentConfig[pos + 1] = 0;
-				CurrentConfig[pos + 2] = 0;
-			}
+			CurrentConfig[pos]++;
+			CurrentConfig[pos + 1]++;
+			CurrentConfig[pos + 2]++;
+			BuildConfigsRecursive(CurrentConfig, TripletsLeft - 1, bPairNeeded, pos + 1, bAllowSequences, OutResults);
+			CurrentConfig[pos]--;
+			CurrentConfig[pos + 1]--;
+			CurrentConfig[pos + 2]--;
 		}
 
-		// Try placing a pair
-		if (bPairNeeded && CurrentConfig[pos] == 0)
+		if (bPairNeeded && CurrentConfig[pos] + 2 <= 4)
 		{
-			CurrentConfig[pos] = 2;
+			CurrentConfig[pos] += 2;
 			BuildConfigsRecursive(CurrentConfig, TripletsLeft, false, pos + 1, bAllowSequences, OutResults);
-			CurrentConfig[pos] = 0;
+			CurrentConfig[pos] -= 2;
 		}
 	}
 }
@@ -292,7 +291,7 @@ int32 FShantenCalculator::CalculateStandardShanten(const TArray<uint8>& Tiles34)
 	HonorTiles.Add(0); // Pad to 9 for consistency
 	HonorTiles.Add(0);
 
-	int32 MinShanten = 8; // Maximum possible shanten
+	int32 MinBFSSum = INT32_MAX; // Maximum possible shanten
 
 	// Try all distributions of 4 melds across 4 suits
 	// Using stars and bars: distribute 4 identical items into 4 bins
@@ -307,17 +306,21 @@ int32 FShantenCalculator::CalculateStandardShanten(const TArray<uint8>& Tiles34)
 				// Try pair in each suit (or no pair for incomplete hands)
 				for (int32 PairSuit = -1; PairSuit < 4; ++PairSuit)
 				{
-					int32 Shanten = CalculateShantenForDistribution(
+					int32 BFSSum = CalculateShantenForDistribution(
 						ManTiles, PinTiles, SouTiles, HonorTiles,
 						m0, m1, m2, m3, PairSuit);
 
-					MinShanten = FMath::Min(MinShanten, Shanten);
+					MinBFSSum = FMath::Min(MinBFSSum, BFSSum);
 				}
 			}
 		}
 	}
 
-	return MinShanten;
+	if (MinBFSSum == 0) return -1;
+	if (MinBFSSum == INT32_MAX) return 8;
+
+
+	return (MinBFSSum - 1) / 2;
 }
 
 int32 FShantenCalculator::CalculateChiitoitsuShanten(const TArray<uint8>& Tiles34)

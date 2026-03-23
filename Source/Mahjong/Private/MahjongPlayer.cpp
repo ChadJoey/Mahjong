@@ -11,7 +11,6 @@ AMahjongPlayer::AMahjongPlayer()
 
 FTileData AMahjongPlayer::DecideDiscard()
 {
-	Super::BeginPlay();
 	switch (Difficulty)
 	{
 	case EAIDifficulty::Easy:

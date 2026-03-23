@@ -53,11 +53,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Mahjong AI")
 	void SetThinkingTime(float Seconds) { ThinkingTime = Seconds; };
 
+	UFUNCTION()
+	AMahjongPlayerState* GetMahjongPlayerState() const;
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float) override;
 
-	AMahjongPlayerState* GetMahjongPlayerState() const;
 
 	FTileData DecideDiscardEasy();
 	FTileData DecideDiscardMedium();

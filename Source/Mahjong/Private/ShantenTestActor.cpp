@@ -81,10 +81,6 @@ void AShantenTestActor::RunShantenTest()
 void AShantenTestActor::BeginPlay()
 {
 	Super::BeginPlay();
-
-	if (!FShantenCalculator::IsInitialized())
-		FShantenCalculator::InitializeTables();
-
 	RunShantenTest();
 	
 }

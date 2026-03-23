@@ -33,3 +33,8 @@ void AMahjongPlayerState::AddRevealedMeld(const FMeldData& Meld)
 {
 	RevealedMelds.Add(Meld);
 }
+
+void AMahjongPlayerState::ClearHand()
+{
+	Hand.Empty();
+}

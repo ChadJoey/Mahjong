@@ -120,6 +120,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Mahjong")
 	TArray<FMeldData> GetRevealedMelds() const { return RevealedMelds; };
 
+	UFUNCTION(BlueprintCallable)
+	void ClearHand();
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mahjong")
+	bool bIsRiichi;
+
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mahjong")
@@ -134,7 +140,6 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mahjong")
 	int32 Points;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mahjong")
-	bool bIsRiichi;
+
 
 };

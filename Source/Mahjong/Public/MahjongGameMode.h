@@ -86,6 +86,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Mahjong|Game")
     void SubmitPass(int32 PlayerIndex);
 
+    UFUNCTION(BlueprintCallable)
+    int32 GetWAllTilesRemaining() const { return Wall.Num() - WallDrawIndex - DeadWallSize; }
+
+
     // ── Events — bind in Blueprint or C++ ────────────────────────────────────
     UPROPERTY(BlueprintAssignable, Category = "Mahjong|Events")
     FOnPhaseChanged  OnPhaseChanged;
@@ -109,6 +113,9 @@ public:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Mahjong|Timing")
     float ResponseWindowDuration = 3.0f;
+
+
+
 
 protected:
     virtual void BeginPlay() override;

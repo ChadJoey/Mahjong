@@ -2,6 +2,7 @@
 
 
 #include "MahjongGameStateBase.h"
+#include <MahjongPlayerState.h>
 
 AMahjongGameStateBase::AMahjongGameStateBase()
 {
@@ -15,7 +16,17 @@ void AMahjongGameStateBase::AddDiscard(const FTileData& Tile)
 
 TArray<FTileData> AMahjongGameStateBase::GetVisibleTiles() const
 {
-	return DiscardTiles;
+    TArray<FTileData> All;
+    for (APlayerState* PS : PlayerArray)
+    {
+        if (AMahjongPlayerState* MPS = Cast<AMahjongPlayerState>(PS))
+        {
+            All.Append(MPS->GetDiscards());
+            for (const FMeldData& Meld : MPS->GetRevealedMelds())
+                All.Append(Meld.Tiles);
+        }
+    }
+    return All;
 }
 
 int32 AMahjongGameStateBase::GetVisibleCount(const FTileData& Tile) const

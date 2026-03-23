@@ -39,6 +39,21 @@ public:
 	bool operator==(const FTileData& Other) const {
 		return Suit == Other.Suit && Value == Other.Value;
 	}
+
+	FString ToString() const
+	{
+		const TCHAR* SuitStr = TEXT("?");
+		switch (Suit)
+		{
+		case ETileSuit::Man:   SuitStr = TEXT("m"); break;
+		case ETileSuit::Pin:   SuitStr = TEXT("p"); break;
+		case ETileSuit::Sou:   SuitStr = TEXT("s"); break;
+		case ETileSuit::Honor: SuitStr = TEXT("z"); break;
+		}
+		return FString::Printf(TEXT("%d%s"), (int32)Value, SuitStr);
+	}
+
+
 };
 
 

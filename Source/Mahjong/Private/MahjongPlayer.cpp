@@ -1,7 +1,9 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "MahjongPlayer.h"
+#include "MahjongGameStateBase.h"
+#include <MahjongGameMode.h>
 
 AMahjongPlayer::AMahjongPlayer()
 {
@@ -170,6 +172,51 @@ void AMahjongPlayer::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
+FMonteCarloInput AMahjongPlayer::BuildMonteCarloInput() const
+{
+	FMonteCarloInput Input;
+	Input.MyPlayerIndex; // seat index
+	Input.NumPlayers = 4;
+
+	AMahjongPlayerState* MyState = GetMahjongPlayerState();
+	if (!MyState) return Input;
+
+	Input.MyHand34 = FShantenCalculator::ToTile34Array(MyState->GetHand());
+
+	Input.SeenTiles34 = Input.MyHand34;
+
+
+	if (AMahjongGameStateBase* GS = GetWorld()->GetGameState<AMahjongGameStateBase>())
+	{
+		TArray<FTileData> Visible = GS->GetVisibleTiles();
+		TArray<uint8> VisibleArr = FShantenCalculator::ToTile34Array(Visible);
+		for (int32 i = 0; i < 34; ++i)
+		{
+			Input.SeenTiles34[i] += VisibleArr[i];
+		}
+	}
+
+
+	for (APlayerState* PS : GetWorld()->GetGameState()->PlayerArray)
+	{
+		AMahjongPlayerState* MPS = Cast<AMahjongPlayerState>(PS);
+		if (!MPS) continue;
+		Input.OpponentMeldCounts.Add(MPS->GetRevealedMelds().Num());
+	}
+
+	if (AMahjongGameMode* GM = GetWorld()->GetAuthGameMode<AMahjongGameMode>())
+	{
+		Input.WallRemaining = GM->GetWAllTilesRemaining();
+		
+	}
+	else
+	{
+		Input.WallRemaining = 70;
+	}
+
+	return Input;
+}
+
 AMahjongPlayerState* AMahjongPlayer::GetMahjongPlayerState() const
 {
 	return Cast<AMahjongPlayerState>(PlayerState);
@@ -202,42 +249,30 @@ FTileData AMahjongPlayer::DecideDiscardMedium()
 
 FTileData AMahjongPlayer::DecideDiscardHard()
 {
-	/*
-	this is a guideline
-	make proper implementation after monte carlo is implemented
-	*/
-
-
-	// Use Monte Carlo + tile efficiency + defensive play
 	AMahjongPlayerState* MyState = GetMahjongPlayerState();
-	if (!MyState || !HandEvaluator)
-		return FTileData();
-
+	if (MyState || !HandEvaluator) return FTileData{};
+	
 	TArray<FTileData> Hand = MyState->GetHand();
+	if (Hand.Num() == 0) return FTileData{};
 
-	// Get shanten-optimal discards
-	TMap<FTileData, int32> DiscardResults = FShantenCalculator::CalculateDiscardResult(Hand);
+	FMonteCarloInput Input = BuildMonteCarloInput();
 
-	// Find minimum shanten
-	int32 MinShanten = INT32_MAX;
-	for (const auto& Pair : DiscardResults)
-	{
-		MinShanten = FMath::Min(MinShanten, Pair.Value);
-	}
+	if (Input.MyHand34.Num() != 34) return HandEvaluator->GetBestDiscard(Hand);
 
-	// Among tiles that maintain minimum shanten, choose safest
-	TArray<FTileData> OptimalDiscards;
-	for (const auto& Pair : DiscardResults)
-	{
-		if (Pair.Value == MinShanten)
-		{
-			OptimalDiscards.Add(Pair.Key);
-		}
-	}
+	TArray<FMonteCarloResult> Results = FMahjongMonteCalroSimulator::EvaluateDiscards(Input, 500);
 
-	// TODO: Add defensive play logic (check which tiles are dangerous)
-	// For now, just return first optimal discard
-	return OptimalDiscards.Num() > 0 ? OptimalDiscards[0] : Hand[0];
+	if (Results.Num() == 0) return HandEvaluator->GetBestDiscard(Hand);
+
+	const FMonteCarloResult& Best = Results[0];
+
+	UE_LOG(LogTemp, Log,
+		TEXT("[Hard AI] Discarding %s | WinRate=%.1f%% | AvgTurns=%.1f | Shanten=%d"),
+		*Best.Discard.ToString(),
+		Best.Winrate * 100.f,
+		Best.AvgTurnsToWin,
+		Best.AvgFinalShanten);
+
+	return Best.Discard;
 
 }
 

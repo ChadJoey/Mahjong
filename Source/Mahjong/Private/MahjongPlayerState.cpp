@@ -37,4 +37,7 @@ void AMahjongPlayerState::AddRevealedMeld(const FMeldData& Meld)
 void AMahjongPlayerState::ClearHand()
 {
 	Hand.Empty();
+	Discards.Empty();
+	RevealedMelds.Empty();
+	bIsRiichi = false;
 }

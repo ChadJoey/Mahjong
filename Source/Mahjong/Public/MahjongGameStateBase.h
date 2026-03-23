@@ -43,6 +43,8 @@ public:
 	UFUNCTION(BlueprintCallable)
 	int32 GetVisibleCount(const FTileData& Tile) const;
 
-	void ClearVisibleTiles();
+
+	UFUNCTION(BlueprintCallable)
+	void AddRevealedTile(const FTileData& Tile) { RevealedTiles.Add(Tile); }
 
 };

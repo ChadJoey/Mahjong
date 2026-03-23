@@ -126,6 +126,15 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mahjong")
 	bool bIsRiichi;
 
+	UFUNCTION(BlueprintCallable, Category = "Mahjong")
+	void AddToDiscards(const FTileData& Tile) { Discards.Add(Tile); }
+
+	UFUNCTION(BlueprintCallable, Category = "Mahjong")
+	TArray<FTileData> GetDiscards() const { return Discards; }
+
+	UFUNCTION(BlueprintCallable, Category = "Mahjong")
+	void ClearRevealedMelds() { RevealedMelds.Empty(); }
+
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mahjong")
@@ -140,6 +149,8 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mahjong")
 	int32 Points;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Mahjong")
+	TArray<FTileData> Discards;
 
 
 };

@@ -7,6 +7,7 @@
 #include "HandAnalyzer.h"
 #include "MahjongPlayerState.h"
 #include "MahjongPlayer.generated.h"
+#include <MahjongMonteCarloSimulator.h>
 
 UENUM(BlueprintType)
 enum class EAIDifficulty : uint8
@@ -52,6 +53,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Mahjong AI")
 	void SetThinkingTime(float Seconds) { ThinkingTime = Seconds; };
+
+	UFUNCTION()
+	FMonteCarloInput BuildMonteCarloInput() const;
 
 	UFUNCTION()
 	AMahjongPlayerState* GetMahjongPlayerState() const;

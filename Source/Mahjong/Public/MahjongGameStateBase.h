@@ -7,9 +7,7 @@
 #include "TileTypes.h"
 #include "MahjongGameStateBase.generated.h"
 
-/**
- * 
- */
+
 UCLASS()
 class MAHJONG_API AMahjongGameStateBase : public AGameStateBase
 {

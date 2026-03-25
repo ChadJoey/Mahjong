@@ -28,7 +28,7 @@ struct FMonteCarloResult
 	float Score = 0.f;
 };
 
-class MAHJONG_API FMahjongMonteCalroSimulator {
+class MAHJONG_API FMahjongMonteCarloSimulator {
 public:
 
 	static TArray<FMonteCarloResult> EvaluateDiscards(const FMonteCarloInput& Input, int32 NumSimulations = 300);

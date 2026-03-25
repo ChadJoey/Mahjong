@@ -62,6 +62,7 @@ struct FPendingCall
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnPhaseChanged, EGamePhase, OldPhase, EGamePhase, NewPhase);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTileDiscarded, int32, PlayerIndex, FTileData, Tile);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnRoundEnded, int32, WinnerIndex, bool, bTsumo);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAwaitingStep, FString, ActionText);
 
 UCLASS()
 class MAHJONG_API AMahjongGameMode : public AGameModeBase
@@ -115,7 +116,21 @@ public:
     float ResponseWindowDuration = 3.0f;
 
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mahjong|Debug")
+    bool bStepMode = true;
 
+    // Called by the UI button to advance one turn
+    UFUNCTION(BlueprintCallable, Category = "Mahjong|Debug")
+    void StepNextTurn();
+
+    // Read by the widget to display what just happened
+    UPROPERTY(BlueprintReadOnly, Category = "Mahjong|Debug")
+    FString LastActionText;
+
+    UPROPERTY(BlueprintAssignable, Category = "Mahjong|Debug")
+    FOnAwaitingStep OnAwaitingStep;
+
+    AMahjongPlayerState* GetPlayerStateAt(int32 Index) const;
 
 protected:
     virtual void BeginPlay() override;
@@ -137,7 +152,6 @@ private:
     // ── Helpers ───────────────────────────────────────────────────────────────
     int32               GetNextPlayerIndex(int32 From) const;
     AMahjongPlayer* GetPlayer(int32 Index) const;
-    AMahjongPlayerState* GetPlayerStateAt(int32 Index) const;
     bool                IsHumanPlayer(int32 Index) const;
     void                CheckAllPlayersResponded();
 
@@ -166,4 +180,7 @@ private:
     static constexpr int32 NumPlayers = 4;
     static constexpr int32 StartingHandSize = 13;
     static constexpr int32 DeadWallSize = 14;
+
+
+    int32 StepPendingNextPlayer = -1;
 };

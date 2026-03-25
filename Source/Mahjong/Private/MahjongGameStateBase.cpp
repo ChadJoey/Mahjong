@@ -42,7 +42,3 @@ int32 AMahjongGameStateBase::GetVisibleCount(const FTileData& Tile) const
     return Count;
 }
 
-void AMahjongGameStateBase::ClearVisibleTiles()
-{
-    DiscardTiles.Reset();
-}

@@ -7,7 +7,7 @@
 
 AMahjongPlayer::AMahjongPlayer()
 {
-	Difficulty = EAIDifficulty::Medium;
+	Difficulty = EAIDifficulty::Hard;
 	ThinkingTime = 1.0;
 }
 
@@ -175,7 +175,7 @@ void AMahjongPlayer::Tick(float DeltaTime)
 FMonteCarloInput AMahjongPlayer::BuildMonteCarloInput() const
 {
 	FMonteCarloInput Input;
-	Input.MyPlayerIndex; // seat index
+	Input.MyPlayerIndex = (int32)MahjongPlayerState->GetSeat(); // seat index
 	Input.NumPlayers = 4;
 
 	AMahjongPlayerState* MyState = GetMahjongPlayerState();
@@ -183,7 +183,7 @@ FMonteCarloInput AMahjongPlayer::BuildMonteCarloInput() const
 
 	Input.MyHand34 = FShantenCalculator::ToTile34Array(MyState->GetHand());
 
-	Input.SeenTiles34 = Input.MyHand34;
+	Input.SeenTiles34.Init(0,34);
 
 
 	if (AMahjongGameStateBase* GS = GetWorld()->GetGameState<AMahjongGameStateBase>())
@@ -219,7 +219,7 @@ FMonteCarloInput AMahjongPlayer::BuildMonteCarloInput() const
 
 AMahjongPlayerState* AMahjongPlayer::GetMahjongPlayerState() const
 {
-	return Cast<AMahjongPlayerState>(PlayerState);
+	return MahjongPlayerState;
 }
 
 FTileData AMahjongPlayer::DecideDiscardEasy()
@@ -238,19 +238,23 @@ FTileData AMahjongPlayer::DecideDiscardEasy()
 FTileData AMahjongPlayer::DecideDiscardMedium()
 {
 	AMahjongPlayerState* MyState = GetMahjongPlayerState();
-	if (!MyState || !HandEvaluator)
+	if (!MyState) return FTileData{};
+
+	if (!HandEvaluator)
 	{
-		return FTileData();
+		HandEvaluator = NewObject<UShantenEvaluator>(this);
 	}
 
 	TArray<FTileData> Hand = MyState->GetHand();
+	if (Hand.Num() == 0) return FTileData{};
+
 	return HandEvaluator->GetBestDiscard(Hand);
 }
 
 FTileData AMahjongPlayer::DecideDiscardHard()
 {
 	AMahjongPlayerState* MyState = GetMahjongPlayerState();
-	if (MyState || !HandEvaluator) return FTileData{};
+	if (!MyState || !HandEvaluator) return FTileData{};
 	
 	TArray<FTileData> Hand = MyState->GetHand();
 	if (Hand.Num() == 0) return FTileData{};
@@ -259,7 +263,7 @@ FTileData AMahjongPlayer::DecideDiscardHard()
 
 	if (Input.MyHand34.Num() != 34) return HandEvaluator->GetBestDiscard(Hand);
 
-	TArray<FMonteCarloResult> Results = FMahjongMonteCalroSimulator::EvaluateDiscards(Input, 500);
+	TArray<FMonteCarloResult> Results = FMahjongMonteCarloSimulator::EvaluateDiscards(Input, 50);
 
 	if (Results.Num() == 0) return HandEvaluator->GetBestDiscard(Hand);
 

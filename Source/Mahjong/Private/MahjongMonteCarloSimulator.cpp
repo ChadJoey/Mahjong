@@ -1,17 +1,29 @@
 #include "MahjongMonteCarloSimulator.h"
 
-TArray<FMonteCarloResult> FMahjongMonteCalroSimulator::EvaluateDiscards(const FMonteCarloInput& Input, int32 NumSimulations)
+TArray<FMonteCarloResult> FMahjongMonteCarloSimulator::EvaluateDiscards(const FMonteCarloInput& Input, int32 NumSimulations)
 {
+	int32 MinShanten = INT32_MAX;
+	for (int32 i = 0; i < 34; ++i)
+	{
+		if (Input.MyHand34[i] == 0) continue;
+		TArray<uint8> Test = Input.MyHand34;
+		Test[i]--;
+		MinShanten = FMath::Min(MinShanten, FShantenCalculator::Calculate(Test));
+	}
+
+
 	TArray<FMonteCarloResult> Results;
 	FRandomStream Rand(FMath::Rand());
 
 	for (int32 TileIdx = 0; TileIdx < 34; TileIdx++)
 	{
-		if (Input.MyHand34[TileIdx == 0]) continue;
+		if (Input.MyHand34[TileIdx] == 0) continue;
 		TArray<uint8> Hand13 = Input.MyHand34;
 		Hand13[TileIdx]--;
 
 		const int32 BaseShanten = FShantenCalculator::Calculate(Hand13);
+
+		if (BaseShanten > MinShanten) continue;
 
 		TArray<uint8> Pool34 = BuildUnknownPool34(Input, Hand13);
 		TArray<int32> UnknownList;
@@ -60,19 +72,18 @@ TArray<FMonteCarloResult> FMahjongMonteCalroSimulator::EvaluateDiscards(const FM
 		Results[0].Winrate * 100.f,
 		Results[0].AvgTurnsToWin,
 		Results[0].AvgFinalShanten);
-
 	return Results;
 }
 
-FTileData FMahjongMonteCalroSimulator::IndexToTile(int32 idx)
+FTileData FMahjongMonteCarloSimulator::IndexToTile(int32 idx)
 {
 	if (idx < 9) return FTileData{ ETileSuit::Man, (uint8)(idx + 1) };
 	if (idx < 18) return FTileData{ ETileSuit::Pin, (uint8)(idx - 8) };
-	if (idx < 9) return FTileData{ ETileSuit::Sou, (uint8)(idx - 17) };
+	if (idx < 27) return FTileData{ ETileSuit::Sou, (uint8)(idx - 17) };
 	return FTileData{ ETileSuit::Honor, (uint8)(idx - 26) };
 }
 
-int32 FMahjongMonteCalroSimulator::TileToIndex(const FTileData& Tile)
+int32 FMahjongMonteCarloSimulator::TileToIndex(const FTileData& Tile)
 {
 	switch (Tile.Suit)
 	{
@@ -84,28 +95,32 @@ int32 FMahjongMonteCalroSimulator::TileToIndex(const FTileData& Tile)
 	}
 }
 
-TArray<uint8> FMahjongMonteCalroSimulator::BuildUnknownPool34(const FMonteCarloInput Input, const TArray<uint8>& MyHand13)
+TArray<uint8> FMahjongMonteCarloSimulator::BuildUnknownPool34(const FMonteCarloInput Input, const TArray<uint8>& MyHand13)
 {
 	TArray<uint8> Pool;
 	Pool.Init(4, 34); //full set
 
 	for (int32 i = 0; i < 34; i++)
 	{
-		Pool[i] -= MyHand13[i];
+		int32 Count = 4;
+		Count -= (int32)MyHand13[i];
 		if (Input.SeenTiles34.IsValidIndex(i))
-		{
-			Pool[i] = (uint8)FMath::Max(0, (int32)Pool[i] - (int32)Input.SeenTiles34[i]);
-		}
+			Count -= (int32)Input.SeenTiles34[i];
+		Pool[i] = (uint8)FMath::Max(0, Count);
 	}
 	return Pool;
 }
 
-TPair<int32, int32> FMahjongMonteCalroSimulator::RunOneSimulation(const FMonteCarloInput& Input, const TArray<uint8>& MyHand13, TArray<int32> UnknownList, FRandomStream& Rand)
+TPair<int32, int32> FMahjongMonteCarloSimulator::RunOneSimulation(const FMonteCarloInput& Input, const TArray<uint8>& MyHand13, TArray<int32> UnknownList, FRandomStream& Rand)
 {
 	const int32 N = Input.NumPlayers;
 	const int32 Me = Input.MyPlayerIndex;
+
+	if (UnknownList.Num() == 0)
+		return { -1, 0 };
+
 	//shuffle unknown tiles
-	for (int32 i = UnknownList.Num(); i > 0; --i)
+	for (int32 i = UnknownList.Num() - 1; i > 0; --i)
 	{
 		UnknownList.Swap(i, Rand.RandRange(0, i));
 	}
@@ -178,42 +193,34 @@ TPair<int32, int32> FMahjongMonteCalroSimulator::RunOneSimulation(const FMonteCa
 			{
 				return { p, MyTurnCount };
 			}
-			
 
-			Current = (Current + 1) % N;
-			if (Current == Me) ++MyTurnCount;
 
 		}
 
-		return { -1, MyTurnCount };
-
-
+		Current = (Current + 1) % N;
+		if (Current == Me) ++MyTurnCount;
 	}
-
-
-
-
-
-
+		return { -1, MyTurnCount };
 }
 
-int32 FMahjongMonteCalroSimulator::GreedyDiscardIndex(const TArray<uint8>& Hand34)
+int32 FMahjongMonteCarloSimulator::GreedyDiscardIndex(const TArray<uint8>& Hand34)
 {
 	int32 Best = -1;
 	int32 BestShan = INT32_MAX;
-	
-	for (int32 i = 0; i < 34; i++)
+
+	for (int32 i = 0; i < 34; ++i)
 	{
 		if (Hand34[i] == 0) continue;
 
 		TArray<uint8> Test = Hand34;
 		Test[i]--;
+		const int32 Shan = FShantenCalculator::Calculate(Test);
 
-		int32 Shan = FShantenCalculator::Calculate(Test);
 		if (Shan < BestShan)
 		{
 			BestShan = Shan;
 			Best = i;
+			if (BestShan == -1) break;
 		}
 	}
 	return Best >= 0 ? Best : 0;

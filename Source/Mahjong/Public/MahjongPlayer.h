@@ -3,11 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "AIController.h"
+#include "GameFramework/Actor.h"
 #include "HandAnalyzer.h"
 #include "MahjongPlayerState.h"
+#include "MahjongMonteCarloSimulator.h"
 #include "MahjongPlayer.generated.h"
-#include <MahjongMonteCarloSimulator.h>
 
 UENUM(BlueprintType)
 enum class EAIDifficulty : uint8
@@ -18,7 +18,7 @@ enum class EAIDifficulty : uint8
 };
 
 UCLASS()
-class MAHJONG_API AMahjongPlayer : public AAIController
+class MAHJONG_API AMahjongPlayer : public AActor
 {
 	GENERATED_BODY()
 	
@@ -54,11 +54,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Mahjong AI")
 	void SetThinkingTime(float Seconds) { ThinkingTime = Seconds; };
 
-	UFUNCTION()
 	FMonteCarloInput BuildMonteCarloInput() const;
 
 	UFUNCTION()
 	AMahjongPlayerState* GetMahjongPlayerState() const;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mahjong")
+	AMahjongPlayerState* MahjongPlayerState;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mahjong")
+	EMahjongSeat Seat;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float) override;
@@ -77,5 +83,6 @@ private:
 	UPROPERTY(EditAnywhere, Category = "AI")
 	float ThinkingTime;
 
-	IHandEvaluator* HandEvaluator;
+	UPROPERTY()
+	UShantenEvaluator* HandEvaluator;
 };

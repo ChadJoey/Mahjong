@@ -25,6 +25,7 @@ void AMahjongVisualManager::BeginPlay()
 		GM->OnPhaseChanged.AddDynamic(this, &AMahjongVisualManager::OnPhaseChanged);
 		GM->OnTileDiscarded.AddDynamic(this, &AMahjongVisualManager::OnTileDiscarded);
 		GM->OnRoundEnded.AddDynamic(this, &AMahjongVisualManager::OnRoundEnded);
+		GM->OnTileDrawn.AddDynamic(this, &AMahjongVisualManager::OnTileDrawn);
 
 		GM->StartGame();
 	}
@@ -42,6 +43,25 @@ void AMahjongVisualManager::OnPhaseChanged(EGamePhase OldPhase, EGamePhase NewPh
 		ClearAllTileActors();
 		DealAllHands();
 	}
+}
+
+void AMahjongVisualManager::OnTileDrawn(int32 PlayerIndex, FTileData Tile)
+{
+	if (!SeatLayouts.IsValidIndex(PlayerIndex)) return;
+
+	// SlotIdx is the current count BEFORE adding — GetHandTileTransform uses +1 internally
+	const int32 SlotIdx = HandTiles[PlayerIndex].Num();
+	FTransform Target = GetHandTileTransform(PlayerIndex, SlotIdx);
+	FVector SpawnLoc = Target.GetLocation() + FVector(0, 0, MoveArcHeight);
+
+	ATileActor* Actor = SpawnTileActor(Tile, SpawnLoc, false, TileSpawnRotation);
+	if (!Actor) return;
+
+	HandTiles[PlayerIndex].Add(Actor);
+	Actor->MoveTo(Target, 0.2f);
+
+	// Recenter now that the hand has 14 tiles
+	RefreshHandLayout(PlayerIndex);
 }
 
 void AMahjongVisualManager::OnTileDiscarded(int32 PlayerIndex, FTileData Tile)
@@ -107,12 +127,16 @@ void AMahjongVisualManager::DealAllHands()
 		this, &AMahjongVisualManager::DealNextTile, DealInterval, true);
 }
 
+
 void AMahjongVisualManager::DealNextTile()
 {
 	if (DealQueue.Num() == 0)
 	{
 		GetWorldTimerManager().ClearTimer(DealTimerHandle);
 		UE_LOG(LogTemp, Log, TEXT("DealNextTile: queue empty, dealing complete"));
+
+		if (AMahjongGameMode* GM = GetWorld()->GetAuthGameMode<AMahjongGameMode>())
+			GM->OnDealingComplete();
 		return;
 	}
 
@@ -121,16 +145,13 @@ void AMahjongVisualManager::DealNextTile()
 
 	if (!SeatLayouts.IsValidIndex(PlayerIndex))
 	{
-		UE_LOG(LogTemp, Error, TEXT("DealNextTile: no SeatLayout for player %d — set 4 entries in VisualManager Details panel"), PlayerIndex);
+		UE_LOG(LogTemp, Error, TEXT("DealNextTile: no SeatLayout for player %d"), PlayerIndex);
 		return;
 	}
 
 	const int32 SlotIdx = HandTiles[PlayerIndex].Num();
 	FTransform Target = GetHandTileTransform(PlayerIndex, SlotIdx);
 	FVector SpawnLoc = Target.GetLocation() + FVector(0, 0, MoveArcHeight);
-
-	UE_LOG(LogTemp, Log, TEXT("DealNextTile: player=%d slot=%d loc=%s"),
-		PlayerIndex, SlotIdx, *SpawnLoc.ToString());
 
 	ATileActor* Actor = SpawnTileActor(Tile, SpawnLoc, false, TileSpawnRotation);
 	if (!Actor) return;
@@ -142,18 +163,18 @@ void AMahjongVisualManager::DealNextTile()
 void AMahjongVisualManager::RefreshHandLayout(int32 PlayerIndex)
 {
 	TArray<ATileActor*>& PHand = HandTiles[PlayerIndex];
-	// Re-centre: offset by half total width so the hand stays centred on HandOrigin
-	const float HalfWidth = ((float)(PHand.Num() - 1) * TileSpacing) * 0.5f;
-	const FTransform& Origin = SeatLayouts.IsValidIndex(PlayerIndex)
-		? SeatLayouts[PlayerIndex].HandOrigin
-		: FTransform::Identity;
+	if (!SeatLayouts.IsValidIndex(PlayerIndex)) return;
+
+	const FTransform& Origin = SeatLayouts[PlayerIndex].HandOrigin;
 	const FVector Right = Origin.GetRotation().GetRightVector();
+	const FQuat FinalRot = Origin.GetRotation() * TileOrientationCorrection.Quaternion();
 
 	for (int32 i = 0; i < PHand.Num(); ++i)
 	{
 		if (!PHand[i]) continue;
-		FVector Loc = Origin.GetLocation() + Right * (i * TileSpacing - HalfWidth);
-		FTransform Target(Origin.GetRotation(), Loc, Origin.GetScale3D());
+		// Same formula as GetHandTileTransform — no centering
+		FVector Loc = Origin.GetLocation() + Right * (i * TileSpacing);
+		FTransform Target(FinalRot, Loc, Origin.GetScale3D());
 		PHand[i]->MoveTo(Target, 0.15f);
 	}
 }
@@ -232,11 +253,7 @@ FTransform AMahjongVisualManager::GetHandTileTransform(int32 PlayerIndex, int32 
 	const FVector Right = Origin.GetRotation().GetRightVector();
 	const FVector Loc = Origin.GetLocation() + Right * (SlotIndex * TileSpacing);
 
-	// Apply a fixed local rotation correction so tiles lay flat facing the seat
-	// Adjust these values if orientation is still off
-	const FRotator Correction(TileOrientationCorrection);
-	const FQuat FinalRot = Origin.GetRotation() * Correction.Quaternion();
-
+	const FQuat FinalRot = Origin.GetRotation() * TileOrientationCorrection.Quaternion();
 	return FTransform(FinalRot, Loc, Origin.GetScale3D());
 }
 

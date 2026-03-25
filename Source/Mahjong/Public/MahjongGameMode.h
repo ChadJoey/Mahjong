@@ -63,6 +63,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnPhaseChanged, EGamePhase, OldPha
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTileDiscarded, int32, PlayerIndex, FTileData, Tile);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnRoundEnded, int32, WinnerIndex, bool, bTsumo);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAwaitingStep, FString, ActionText);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTileDrawn, int32, PlayerIndex, FTileData, Tile);
 
 UCLASS()
 class MAHJONG_API AMahjongGameMode : public AGameModeBase
@@ -90,6 +91,9 @@ public:
     UFUNCTION(BlueprintCallable)
     int32 GetWAllTilesRemaining() const { return Wall.Num() - WallDrawIndex - DeadWallSize; }
 
+    UFUNCTION()
+    void OnDealingComplete();
+
 
     // ── Events — bind in Blueprint or C++ ────────────────────────────────────
     UPROPERTY(BlueprintAssignable, Category = "Mahjong|Events")
@@ -100,6 +104,9 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Mahjong|Events")
     FOnRoundEnded    OnRoundEnded;
+
+    UPROPERTY(BlueprintAssignable, Category = "Mahjong|Events")
+    FOnTileDrawn OnTileDrawn;
 
     // ── Read-only state (query from UI/Blueprint) ─────────────────────────────
     UPROPERTY(BlueprintReadOnly, Category = "Mahjong|State")
@@ -144,6 +151,12 @@ private:
     void ResolveResponseWindow();
     void ApplyCall(const FPendingCall& Call, const FTileData& ClaimedTile);
     void EndRound(int32 WinningPlayerIndex, bool bIsTsumo);
+
+   
+
+    bool bWaitingForDealAnimation = false;
+    // Tracks whether we're waiting for dealing animation to finish
+
 
     // ── AI scheduling ─────────────────────────────────────────────────────────
     void ScheduleAIDiscard(int32 PlayerIndex);

@@ -106,6 +106,9 @@ private:
     UFUNCTION()
     void OnRoundEnded(int32 WinnerIndex, bool bTsumo);
 
+    UFUNCTION()
+    void OnTileDrawn(int32 PlayerIndex, FTileData Tile);
+
     // ── Tile spawning and layout ──────────────────────────────────────────────
     void DealAllHands();
     void DealNextTile();                          // timer callback — deals one tile at a time

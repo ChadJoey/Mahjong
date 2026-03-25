@@ -66,6 +66,13 @@ TArray<FMonteCarloResult> FMahjongMonteCarloSimulator::EvaluateDiscards(const FM
 		return A.Score > B.Score;
 	});
 
+	const int32 CandidateCount = Results.Num();
+	const int32 TotalSims = CandidateCount * NumSimulations;
+
+	UE_LOG(LogTemp, Log, TEXT("[MC] Ran %d simulations across %d candidates (%d each)"),
+		TotalSims,
+		CandidateCount,
+		NumSimulations);
 
 	UE_LOG(LogTemp, Verbose, TEXT("[MC] Best discard: %s  WinRate=%.1f%%  AvgTurns=%.1f  Shanten=%d"),
 		*Results[0].Discard.ToString(),

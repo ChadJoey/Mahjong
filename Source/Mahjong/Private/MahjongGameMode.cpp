@@ -169,14 +169,12 @@ void AMahjongGameMode::TransitionToPhase(EGamePhase NewPhase)
 
 void AMahjongGameMode::StartRound()
 {
-    // Clear hands first — no broadcast yet
     for (AMahjongPlayer* P : Players)
         if (AMahjongPlayerState* PS = P->GetMahjongPlayerState())
             PS->ClearHand();
 
     BuildAndShuffleWall();
 
-    // Deal all tiles
     for (int32 t = 0; t < StartingHandSize; ++t)
         for (int32 p = 0; p < NumPlayers; ++p)
             if (AMahjongPlayerState* PS = GetPlayerStateAt(p))
@@ -186,10 +184,10 @@ void AMahjongGameMode::StartRound()
         if (AMahjongPlayerState* PS = P->GetMahjongPlayerState())
             PS->SortHand();
 
-    // NOW broadcast Dealing — hands are full, VisualManager can read them
+    // Flag that we're waiting for the visual manager to finish dealing
+    bWaitingForDealAnimation = true;
     TransitionToPhase(EGamePhase::Dealing);
 
-    BeginPlayerTurn(CurrentPlayerIndex);
 }
 
 void AMahjongGameMode::BeginPlayerTurn(int32 PlayerIndex)
@@ -211,6 +209,8 @@ void AMahjongGameMode::BeginPlayerTurn(int32 PlayerIndex)
         //PS->SortHand();
     }
 
+    OnTileDrawn.Broadcast(PlayerIndex, Drawn);
+    
     TransitionToPhase(EGamePhase::PlayerAction);
 
     if (IsHumanPlayer(PlayerIndex))
@@ -272,6 +272,13 @@ void AMahjongGameMode::ResolveResponseWindow()
     }
 
     ApplyCall(Best, LastDiscardedTile);
+}
+
+void AMahjongGameMode::OnDealingComplete()
+{
+    if (!bWaitingForDealAnimation) return;
+    bWaitingForDealAnimation = false;
+    BeginPlayerTurn(CurrentPlayerIndex);
 }
 
 void AMahjongGameMode::ApplyCall(const FPendingCall& Call, const FTileData& ClaimedTile)

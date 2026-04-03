@@ -64,6 +64,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTileDiscarded, int32, PlayerInde
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnRoundEnded, int32, WinnerIndex, bool, bTsumo);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAwaitingStep, FString, ActionText);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnTileDrawn, int32, PlayerIndex, FTileData, Tile);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnRoundResult, const FString&, ResultText, float, DisplayDuration);
 
 UCLASS()
 class MAHJONG_API AMahjongGameMode : public AGameModeBase
@@ -126,9 +127,20 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mahjong|Debug")
     bool bStepMode = true;
 
+    UPROPERTY(BlueprintAssignable) 
+    FOnRoundResult OnRoundResult;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Game|Round")
+    float RoundRestartDelay = 10.0f;
+
+
     // Called by the UI button to advance one turn
     UFUNCTION(BlueprintCallable, Category = "Mahjong|Debug")
     void StepNextTurn();
+
+    UFUNCTION(BlueprintCallable, Category = "Game") void ToggleStepMode();
+    UFUNCTION(BlueprintCallable, Category="Game") bool GetStepMode() const { return bStepMode; }
+
 
     // Read by the widget to display what just happened
     UPROPERTY(BlueprintReadOnly, Category = "Mahjong|Debug")
@@ -138,6 +150,8 @@ public:
     FOnAwaitingStep OnAwaitingStep;
 
     AMahjongPlayerState* GetPlayerStateAt(int32 Index) const;
+
+    FTileData LastDrawnTile;
 
 protected:
     virtual void BeginPlay() override;
@@ -160,6 +174,7 @@ private:
 
     // ── AI scheduling ─────────────────────────────────────────────────────────
     void ScheduleAIDiscard(int32 PlayerIndex);
+    void ScheduleAIDiscardOld(int32 PlayerIndex);
     void ScheduleAICallDecision(int32 PlayerIndex);
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -189,11 +204,12 @@ private:
     FTimerHandle AIDiscardTimerHandle;
     TArray<FTimerHandle> CallDecisionTimerHandles;
     FTimerHandle ResponseWindowTimerHandle;
-
+    FTimerHandle RoundRestartTimerHandle;
+    
     static constexpr int32 NumPlayers = 4;
     static constexpr int32 StartingHandSize = 13;
     static constexpr int32 DeadWallSize = 14;
 
-
+    bool bAsyncDiscardPending = false;
     int32 StepPendingNextPlayer = -1;
 };

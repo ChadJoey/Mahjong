@@ -25,13 +25,20 @@ struct FMonteCarloResult
 	float AvgTurnsToWin = 0.f;
 	int32 AvgFinalShanten = 0;
 	int32 Simulations = 0;
+	UPROPERTY() int32 TotalSimulations = 0;
+	UPROPERTY() int32 CandidatesConsidered = 0;
 	float Score = 0.f;
 };
 
 class MAHJONG_API FMahjongMonteCarloSimulator {
 public:
 
+	static TArray<FMonteCarloResult> EvaluateDiscardsOld(const FMonteCarloInput& Input, int32 NumSimulations);
+
 	static TArray<FMonteCarloResult> EvaluateDiscards(const FMonteCarloInput& Input, int32 NumSimulations = 300);
+
+	static void EvaluateDiscardsAsync(FMonteCarloInput Input, int32 NumSimulations, TFunction<void(TArray<FMonteCarloResult>)> OnComplete);
+
 
 	static FTileData IndexToTile(int32 idx);
 	static int32 TileToIndex(const FTileData& Tile);

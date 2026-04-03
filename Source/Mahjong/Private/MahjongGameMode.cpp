@@ -7,6 +7,7 @@
 
 AMahjongGameMode::AMahjongGameMode()
 {
+    DefaultPawnClass = nullptr;
 }
 
 
@@ -51,55 +52,73 @@ void AMahjongGameMode::OnPlayerDiscard(int32 PlayerIndex, const FTileData& Disca
     if (PlayerIndex != CurrentPlayerIndex) return;
 
     AMahjongPlayerState* PS = GetPlayerStateAt(PlayerIndex);
+    AMahjongPlayer* P = GetPlayer(PlayerIndex);
 
-    // Capture hand BEFORE removal so the log shows the full 14-tile hand
+    const int32 ExpectedSize = 14 - (PS ? PS->GetRevealedMelds().Num() * 3 : 0);
+    if (!PS || PS->GetHandSize() != ExpectedSize)
+    {
+        UE_LOG(LogTemp, Error, TEXT("[%s] OnPlayerDiscard: expected %d tiles, found %d — skipping"),
+            GetSeatName(PlayerIndex), ExpectedSize, PS ? PS->GetHandSize() : -1);
+        return;
+    }
+
+    // Capture hand BEFORE removal for the log
     FString HandBefore;
     if (PS)
         for (const FTileData& T : PS->GetHand())
             HandBefore += T.ToString() + TEXT(" ");
 
     if (PS) PS->RemoveTileFromHand(DiscardedTile);
-
     OnTileDiscarded.Broadcast(PlayerIndex, DiscardedTile);
     if (PS) PS->AddToDiscards(DiscardedTile);
 
+    // ── Build action text (always, not just in step mode) ─────────────────
+    FString HandAfter, DiscardStr;
+    int32 Shanten = -2;
+    if (PS)
+    {
+        for (const FTileData& T : PS->GetDiscards())
+            DiscardStr += T.ToString() + TEXT(" ");
+        for (const FTileData& T : PS->GetHand())
+            HandAfter += T.ToString() + TEXT(" ");
+
+        TArray<uint8> Tiles34 = FShantenCalculator::ToTile34Array(PS->GetHand());
+        Shanten = FShantenCalculator::Calculate(Tiles34);
+    }
+
+    LastActionText = FString::Printf(
+        TEXT("%s (P%d) discarded %s | Shanten: %d\nHand:     %s\nDiscards: %s"),
+        GetSeatName(PlayerIndex), PlayerIndex,
+        *DiscardedTile.ToString(),
+        Shanten,
+        *HandAfter.TrimEnd(),
+        DiscardStr.IsEmpty() ? TEXT("—") : *DiscardStr.TrimEnd());
+
+    // Append MC stats if this player used async Monte Carlo this turn
+    if (P && P->bHasLastMCResult)
+    {
+        const FMonteCarloResult& MC = P->LastMCResult;
+        LastActionText += FString::Printf(
+            TEXT("\n[MC] WR: %.1f%%  AvgTurns: %.1f  Shanten: %d  | %d candidates  %d total sims"),
+            MC.Winrate * 100.f,
+            MC.AvgTurnsToWin,
+            MC.AvgFinalShanten,
+            MC.CandidatesConsidered,
+            MC.TotalSimulations);
+    }
+
+    // Always log and broadcast — widget updates in both step and auto-play mode
+    UE_LOG(LogTemp, Log, TEXT("[Discard] %s"), *LastActionText);
+    OnAwaitingStep.Broadcast(LastActionText);
+
+    // Step mode pauses here; auto-play continues straight to response window
     if (bStepMode)
     {
-        FString DiscardStr;
-        FString HandAfter;
-        int32 Shanten = -2;
-
-        if (PS)
-        {
-            for (const FTileData& T : PS->GetDiscards())
-                DiscardStr += T.ToString() + TEXT(" ");
-
-            for (const FTileData& T : PS->GetHand())
-                HandAfter += T.ToString() + TEXT(" ");
-
-            TArray<uint8> Tiles34 = FShantenCalculator::ToTile34Array(PS->GetHand());
-            Shanten = FShantenCalculator::Calculate(Tiles34);
-        }
-
-        LastActionText = FString::Printf(
-            TEXT("%s (player %d) discarded %s\nShanten after: %d\nHand before:   %s\nHand after:    %s\nDiscards: %s"),
-            GetSeatName(PlayerIndex),
-            PlayerIndex,
-            *DiscardedTile.ToString(),
-            Shanten,
-            *HandBefore.TrimEnd(),
-            *HandAfter.TrimEnd(),
-            DiscardStr.IsEmpty() ? TEXT("—") : *DiscardStr.TrimEnd());
-
-        UE_LOG(LogTemp, Log, TEXT("[Step] %s"), *LastActionText);
-
         StepPendingNextPlayer = GetNextPlayerIndex(PlayerIndex);
-        OnAwaitingStep.Broadcast(LastActionText);
         return;
     }
 
     BeginResponseWindow(DiscardedTile, PlayerIndex);
-
 }
 
 void AMahjongGameMode::SubmitCall(int32 PlayerIndex, ECallType CallType)
@@ -149,6 +168,42 @@ void AMahjongGameMode::StepNextTurn()
     }
 }
 
+void AMahjongGameMode::ToggleStepMode()
+{
+    bStepMode = !bStepMode;
+    UE_LOG(LogTemp, Log, TEXT("Step mode: %s"), bStepMode ? TEXT("ON") : TEXT("OFF"));
+
+    if (!bStepMode)
+    {
+        if (CurrentPhase == EGamePhase::RoundEnd)
+        {
+            // Round finished while paused — start the restart timer now.
+            GetWorldTimerManager().SetTimer(
+                RoundRestartTimerHandle, this,
+                &AMahjongGameMode::StartRound,
+                RoundRestartDelay, false);
+        }
+        else if (StepPendingNextPlayer >= 0)
+        {
+            // A discard happened in step mode but the response window was
+            // skipped. Resume from there instead of issuing another discard
+            // on the same player (which would cause a shrinking hand bug).
+            StepPendingNextPlayer = -1;
+            BeginResponseWindow(LastDiscardedTile, LastDiscardingPlayerIndex);
+        }
+        else if (CurrentPhase == EGamePhase::PlayerAction && !bAsyncDiscardPending)
+        {
+            // Game was paused mid-turn before any discard — kick the AI off.
+            ScheduleAIDiscard(CurrentPlayerIndex);
+        }
+        else if (CurrentPhase == EGamePhase::Dealing && !bWaitingForDealAnimation)
+        {
+            // Dealing finished while paused.
+            BeginPlayerTurn(CurrentPlayerIndex);
+        }
+    }
+}
+
 void AMahjongGameMode::BeginPlay()
 {
     Super::BeginPlay();
@@ -169,6 +224,10 @@ void AMahjongGameMode::TransitionToPhase(EGamePhase NewPhase)
 
 void AMahjongGameMode::StartRound()
 {
+    bAsyncDiscardPending = false;
+    StepPendingNextPlayer = -1;
+    CurrentPlayerIndex = 0;
+
     for (AMahjongPlayer* P : Players)
         if (AMahjongPlayerState* PS = P->GetMahjongPlayerState())
             PS->ClearHand();
@@ -184,10 +243,8 @@ void AMahjongGameMode::StartRound()
         if (AMahjongPlayerState* PS = P->GetMahjongPlayerState())
             PS->SortHand();
 
-    // Flag that we're waiting for the visual manager to finish dealing
     bWaitingForDealAnimation = true;
     TransitionToPhase(EGamePhase::Dealing);
-
 }
 
 void AMahjongGameMode::BeginPlayerTurn(int32 PlayerIndex)
@@ -202,6 +259,7 @@ void AMahjongGameMode::BeginPlayerTurn(int32 PlayerIndex)
     TransitionToPhase(EGamePhase::PlayerDraw);
 
     FTileData Drawn = DrawFromWall();
+    LastDrawnTile = Drawn;
     if (AMahjongPlayerState* PS = GetPlayerStateAt(PlayerIndex))
     {
         PS->AddTileToHand(Drawn);
@@ -328,32 +386,108 @@ void AMahjongGameMode::ApplyCall(const FPendingCall& Call, const FTileData& Clai
 
 void AMahjongGameMode::EndRound(int32 WinningPlayerIndex, bool bIsTsumo)
 {
+    bAsyncDiscardPending = false;
     GetWorldTimerManager().ClearTimer(AIDiscardTimerHandle);
     GetWorldTimerManager().ClearTimer(ResponseWindowTimerHandle);
+    GetWorldTimerManager().ClearTimer(RoundRestartTimerHandle);
     for (FTimerHandle& H : CallDecisionTimerHandles)
-    {
         GetWorldTimerManager().ClearTimer(H);
-    }
 
     TransitionToPhase(EGamePhase::RoundEnd);
 
+    FString ResultText;
     if (WinningPlayerIndex >= 0)
     {
-        UE_LOG(LogTemp, Log, TEXT("Player %d wins be %s"), WinningPlayerIndex, bIsTsumo ? TEXT("Tsumo") : TEXT("Ron"));
+        FString HandStr;
+        if (AMahjongPlayerState* WPS = GetPlayerStateAt(WinningPlayerIndex))
+            for (const FTileData& T : WPS->GetHand())
+                HandStr += T.ToString() + TEXT(" ");
+
+        if (bIsTsumo)
+        {
+            // Winning tile is already in the hand — highlight it separately
+            ResultText = FString::Printf(
+                TEXT("%s wins by Tsumo!\nHand: %s\nWinning draw: %s"),
+                GetSeatName(WinningPlayerIndex),
+                *HandStr.TrimEnd(),
+                *LastDrawnTile.ToString());
+        }
+        else
+        {
+            ResultText = FString::Printf(
+                TEXT("%s wins by Ron!\nHand: %s\nWinning tile: %s (from %s)"),
+                GetSeatName(WinningPlayerIndex),
+                *HandStr.TrimEnd(),
+                *LastDiscardedTile.ToString(),
+                GetSeatName(LastDiscardingPlayerIndex));
+        }
     }
     else
     {
-        UE_LOG(LogTemp, Log, TEXT("Ryuukyoku (no more draws)"))
+        ResultText = TEXT("Ryuukyoku — wall exhausted, no winner.");
     }
 
-    OnRoundEnded.Broadcast(WinningPlayerIndex, bIsTsumo);
+    UE_LOG(LogTemp, Log, TEXT("[Round End] %s"), *ResultText);
 
+    // Update the button text through the existing binding
+    LastActionText = ResultText;
+    OnAwaitingStep.Broadcast(LastActionText);
+
+    OnRoundEnded.Broadcast(WinningPlayerIndex, bIsTsumo);
+    OnRoundResult.Broadcast(ResultText, bStepMode ? 0.f : RoundRestartDelay);
+
+    if (!bStepMode)
+    {
+        GetWorldTimerManager().SetTimer(
+            RoundRestartTimerHandle, this,
+            &AMahjongGameMode::StartRound,
+            RoundRestartDelay, false);
+    }
     //TODO: score calc, dealer rotation, check for game end
     //when done transition to GameEnd()
 
 }
 
 void AMahjongGameMode::ScheduleAIDiscard(int32 PlayerIndex)
+{
+    const float Delay = bStepMode ? 0.01f : AIThinkingTime;
+
+    FTimerDelegate Del;
+    Del.BindLambda([this, PlayerIndex]()
+        {
+            AMahjongPlayer* P = GetPlayer(PlayerIndex);
+            if (!P || CurrentPhase != EGamePhase::PlayerAction) return;
+
+            UE_LOG(LogTemp, Log, TEXT("[%s] deciding discard... (hand: %d tiles)"),
+                GetSeatName(PlayerIndex),
+                GetPlayerStateAt(PlayerIndex) ? GetPlayerStateAt(PlayerIndex)->GetHandSize() : -1);
+
+            if (bAsyncDiscardPending) return;
+
+            if (P->ShouldDeclareTsumo()) { EndRound(PlayerIndex, true); return; }
+
+            if (AMahjongPlayerState* PS = GetPlayerStateAt(PlayerIndex))
+                if (!PS->bIsRiichi && P->ShouldDeclareRiichi())
+                    PS->bIsRiichi = true;
+
+            bAsyncDiscardPending = true;
+            P->DecideDiscardAsync([this, PlayerIndex](FTileData Discard)
+                {
+                    bAsyncDiscardPending = false;
+
+                    if (CurrentPhase != EGamePhase::PlayerAction) return;
+
+                    UE_LOG(LogTemp, Log, TEXT("[%s] chose discard: %s"),
+                        GetSeatName(PlayerIndex), *Discard.ToString());
+
+                    OnPlayerDiscard(PlayerIndex, Discard);
+                });
+        });
+
+    GetWorldTimerManager().SetTimer(AIDiscardTimerHandle, Del, Delay, false);
+}
+
+void AMahjongGameMode::ScheduleAIDiscardOld(int32 PlayerIndex)
 {
     // In step mode use zero delay — the button press is the "think time"
     const float Delay = bStepMode ? 0.01f : AIThinkingTime;
@@ -393,23 +527,23 @@ void AMahjongGameMode::ScheduleAICallDecision(int32 PlayerIndex)
     const float Delay = 0.2f + PlayerIndex * 0.1f;
 
     FTimerDelegate Del;
-    Del.BindLambda([this, PlayerIndex]() {
+    Del.BindLambda([this, PlayerIndex]()
+        {
+            if (CurrentPhase != EGamePhase::ResponseWindow) return;
 
-        if (CurrentPhase != EGamePhase::ResponseWindow) return;
-        
-        AMahjongPlayer* P = GetPlayer(PlayerIndex);
-        if (!P) {SubmitPass(PlayerIndex); return;}
+            AMahjongPlayer* P = GetPlayer(PlayerIndex);
+            if (!P) { SubmitPass(PlayerIndex); return; }
 
-        if (P->ShouldDeclareRon(LastDiscardedTile)) SubmitCall(PlayerIndex, ECallType::Ron);
-        else if (P->ShouldCallKan(LastDiscardedTile)) SubmitCall(PlayerIndex, ECallType::Kan);
-        else if (P->ShouldCallPon(LastDiscardedTile)) SubmitCall(PlayerIndex, ECallType::Pon);
-        else if (P->ShouldCallChi (LastDiscardedTile)) SubmitCall(PlayerIndex, ECallType::Chi);
-        else SubmitPass(PlayerIndex);
+            if (P->ShouldDeclareRon(LastDiscardedTile))      SubmitCall(PlayerIndex, ECallType::Ron);
+            else if (P->ShouldCallKan(LastDiscardedTile))    SubmitCall(PlayerIndex, ECallType::Kan);
+            else if (P->ShouldCallPon(LastDiscardedTile))    SubmitCall(PlayerIndex, ECallType::Pon);
+            else if (P->ShouldCallChi(LastDiscardedTile))    SubmitCall(PlayerIndex, ECallType::Chi);
+            else                                             SubmitPass(PlayerIndex);
         });
 
     GetWorldTimerManager().SetTimer(Handle, Del, Delay, false);
-
 }
+
 
 void AMahjongGameMode::BuildAndShuffleWall()
 {
@@ -472,7 +606,8 @@ AMahjongPlayerState* AMahjongGameMode::GetPlayerStateAt(int32 Index) const
 bool AMahjongGameMode::IsHumanPlayer(int32 Index) const
 {
     if (bStepMode) return false;
-    return Index == 0; //seat 0 is the player
+    return false;
+    //return Index == 0; //seat 0 is the player
 }
 
 void AMahjongGameMode::CheckAllPlayersResponded()

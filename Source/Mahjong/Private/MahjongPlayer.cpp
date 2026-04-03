@@ -22,7 +22,7 @@ FTileData AMahjongPlayer::DecideDiscard()
 		return DecideDiscardMedium();
 		break;
 	case EAIDifficulty::Hard:
-		return DecideDiscardHard();
+		//return DecideDiscardHard();
 		break;
 	default:
 		break;
@@ -65,8 +65,8 @@ bool AMahjongPlayer::ShouldCallPon(const FTileData& DiscardedTile)
 		// Calculate shanten before and after pon
 		// TODO: Implement proper evaluation
 	}
-
-	return Difficulty >= EAIDifficulty::Medium;
+	return false;
+	//return Difficulty >= EAIDifficulty::Medium;
 }
 
 bool AMahjongPlayer::ShouldCallKan(const FTileData& DiscardedTile)
@@ -93,8 +93,8 @@ bool AMahjongPlayer::ShouldCallKan(const FTileData& DiscardedTile)
 		// Calculate shanten before and after pon
 		// TODO: Implement proper evaluation
 	}
-
-	return Difficulty >= EAIDifficulty::Medium;
+	return false;
+	//return Difficulty >= EAIDifficulty::Medium;
 }
 
 bool AMahjongPlayer::ShouldDeclareRiichi()
@@ -278,6 +278,62 @@ FTileData AMahjongPlayer::DecideDiscardHard()
 
 	return Best.Discard;
 
+}
+
+
+void AMahjongPlayer::DecideDiscardAsync(TFunction<void(FTileData)> OnDecided)
+{
+	// Easy / Medium: synchronous, callback fires immediately
+	if (Difficulty != EAIDifficulty::Hard)
+	{
+		OnDecided(DecideDiscard());
+		return;
+	}
+
+	// Hard: build MC input here on the game thread, then run off it
+	AMahjongPlayerState* MyState = GetMahjongPlayerState();
+	if (!MyState || MyState->GetHandSize() == 0 || !HandEvaluator)
+	{
+		OnDecided(FTileData{});
+		return;
+	}
+
+	TArray<FTileData> Hand = MyState->GetHand();
+	FMonteCarloInput Input = BuildMonteCarloInput();
+
+	if (Input.MyHand34.Num() != 34)
+	{
+		OnDecided(HandEvaluator->GetBestDiscard(Hand));
+		return;
+	}
+
+	FMahjongMonteCarloSimulator::EvaluateDiscardsAsync(
+		MoveTemp(Input), Simulations,
+		[this, OnDecided = MoveTemp(OnDecided)](TArray<FMonteCarloResult> Results)
+		{
+			AMahjongPlayerState* State = GetMahjongPlayerState();
+			if (Results.IsEmpty())
+			{
+				bHasLastMCResult = false;
+				OnDecided(HandEvaluator && State
+					? HandEvaluator->GetBestDiscard(State->GetHand())
+					: FTileData{});
+				return;
+			}
+
+			// Store for UI before firing the callback
+			LastMCResult = Results[0];
+			bHasLastMCResult = true;
+
+			UE_LOG(LogTemp, Log,
+				TEXT("[Hard AI] Discard %s | WR=%.1f%% | AvgTurns=%.1f | Shanten=%d"),
+				*Results[0].Discard.ToString(),
+				Results[0].Winrate * 100.f,
+				Results[0].AvgTurnsToWin,
+				Results[0].AvgFinalShanten);
+
+			OnDecided(Results[0].Discard);
+		});
 }
 
 float AMahjongPlayer::EvaluateHandMonteCarlo(const TArray<FTileData>& Hand, int32 NumSimulations)

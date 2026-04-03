@@ -54,7 +54,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Mahjong AI")
 	void SetThinkingTime(float Seconds) { ThinkingTime = Seconds; };
 
+	void DecideDiscardAsync(TFunction<void(FTileData)> OnDecided);
+	
 	FMonteCarloInput BuildMonteCarloInput() const;
+
+
+	FMonteCarloResult LastMCResult;
+	bool              bHasLastMCResult = false;
 
 	UFUNCTION()
 	AMahjongPlayerState* GetMahjongPlayerState() const;
@@ -65,6 +71,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mahjong")
 	EMahjongSeat Seat;
 
+	std::atomic<int> Simulations = 500;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float) override;
@@ -73,6 +81,7 @@ protected:
 	FTileData DecideDiscardEasy();
 	FTileData DecideDiscardMedium();
 	FTileData DecideDiscardHard();
+
 
 
 	float EvaluateHandMonteCarlo(const TArray<FTileData>& Hand, int32 NumSimulations = 1000);

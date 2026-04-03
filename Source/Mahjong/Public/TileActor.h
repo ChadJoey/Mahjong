@@ -19,7 +19,7 @@ public:
 	ATileActor();
 
 	UFUNCTION(BlueprintCallable, Category = "Tile")
-	void InitTile(const FTileData& InTileData,UStaticMesh* InFrontMesh,UMaterialInterface* InFrontMaterial, UStaticMesh* InBackMes);
+	void InitTile(const FTileData& InTileData,UStaticMesh* InFrontMesh,UMaterialInterface* InFrontMaterial);
 
 	UFUNCTION(BlueprintCallable, Category = "Tile")
 	void SetFaceUp(bool bFaceUp);

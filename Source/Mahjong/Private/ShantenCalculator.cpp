@@ -3,10 +3,54 @@
 
 #include "ShantenCalculator.h"
 #include <map>
+#include "Async/ParallelFor.h"
+#include "Async/Async.h"
+#include "Async/AsyncWork.h"
+#include <atomic>
 
+std::atomic<bool> FShantenCalculator::bTablesInitialized{ false };
 
+void FShantenCalculator::InitializeTablesAsync(TFunction<void()> OnComplete)
+{
+	Async(EAsyncExecution::ThreadPool,
+		[Callback = MoveTemp(OnComplete)]()
+		{
+			InitializeTables();
+
+			// TFunction is copyable, so the inner lambda can capture by value
+			// without needing a second move.
+			AsyncTask(ENamedThreads::GameThread,
+				[Callback]() { Callback(); });
+		});
+}
 
 void FShantenCalculator::InitializeTables()
+{
+	UE_LOG(LogTemp, Log, TEXT("Building shanten tables (parallel)..."));
+
+	// 20 independent BFS runs: NumMelds(0-4) × HasPair(0-1) × IsSuit(0-1)
+	// Flat encoding: Idx = NumMelds*4 + HasPair*2 + IsSuit
+	// Each iteration writes to a unique ShantenTables[][][], no shared state.
+	ParallelFor(5 * 2 * 2, [](int32 Idx)
+		{
+			const int32 NumMelds = Idx / 4;
+			const int32 HasPair = (Idx % 4) / 2;
+			const int32 IsSuit = Idx % 2;
+
+			ShantenTables[NumMelds][HasPair][IsSuit] =
+				BuildShantenTableForShape(NumMelds, HasPair != 0, IsSuit != 0);
+		});
+
+	// Release store: any thread that observes IsInitialized()==true is
+	// guaranteed to also see the completed table data.
+	bTablesInitialized.store(true, std::memory_order_release);
+	DebugPrintTableStats();
+	UE_LOG(LogTemp, Log, TEXT("Shanten tables ready."));
+}
+
+
+
+void FShantenCalculator::InitializeTablesOld()
 {
 
 	UE_LOG(LogTemp, Log, TEXT("	Building shanten tables..."));
@@ -28,6 +72,12 @@ void FShantenCalculator::InitializeTables()
 		}
 	}
 }
+
+bool FShantenCalculator::IsInitialized()
+{
+	return bTablesInitialized.load(std::memory_order_acquire);
+}
+
 
 int32 FShantenCalculator::Calculate(const TArray<uint8>& Tiles34)
 {
@@ -200,7 +250,7 @@ void FShantenCalculator::BuildConfigsRecursive(TArray<uint8> CurrentConfig, int3
 		if (TripletsLeft > 0 && CurrentConfig[pos] + 3 <= 4)
 		{
 			CurrentConfig[pos] += 3;
-			BuildConfigsRecursive(CurrentConfig, TripletsLeft - 1, bPairNeeded, pos + 1, bAllowSequences, OutResults);
+			BuildConfigsRecursive(CurrentConfig, TripletsLeft - 1, bPairNeeded, pos, bAllowSequences, OutResults);
 			CurrentConfig[pos] -= 3;
 		}
 
@@ -213,7 +263,7 @@ void FShantenCalculator::BuildConfigsRecursive(TArray<uint8> CurrentConfig, int3
 			CurrentConfig[pos]++;
 			CurrentConfig[pos + 1]++;
 			CurrentConfig[pos + 2]++;
-			BuildConfigsRecursive(CurrentConfig, TripletsLeft - 1, bPairNeeded, pos + 1, bAllowSequences, OutResults);
+			BuildConfigsRecursive(CurrentConfig, TripletsLeft - 1, bPairNeeded, pos, bAllowSequences, OutResults);
 			CurrentConfig[pos]--;
 			CurrentConfig[pos + 1]--;
 			CurrentConfig[pos + 2]--;

@@ -8,15 +8,19 @@
  * 
  */
 
-static bool bTablesInitialized;
 
 class MAHJONG_API FShantenCalculator
 {
 public:
 
 
+	static std::atomic<bool> bTablesInitialized;
+	void InitializeTablesAsync(TFunction<void()> OnComplete);
+
 	static void InitializeTables();
-	static bool IsInitialized() { return bTablesInitialized; };
+	static bool IsInitialized();
+
+	void InitializeTablesOld();
 
 	static int32 Calculate(const TArray<uint8>& Tiles34);
 	static TMap<FTileData, int32> CalculateDiscardResult(const TArray<FTileData>& Hand);
@@ -47,7 +51,7 @@ private:
 	static TArray<TArray<uint8>> GetAdjacentConfigs(const TArray<uint8> configs);
 	static void BuildConfigsRecursive(TArray<uint8> CurrentConfig, int32 TripletsLeft, bool bPairNeeded, int32 StartPos,bool bAllowSequences, TArray<TArray<uint8>>& OutResults);
 
-	void DebugPrintTableStats();
+	static void DebugPrintTableStats();
 
 
 };

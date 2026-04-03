@@ -81,13 +81,18 @@ void AMahjongVisualManager::OnTileDiscarded(int32 PlayerIndex, FTileData Tile)
 	}
 	if (!ToDiscard) return;
 
+	// Sort actor array to match the sorted player state hand
+	PHand.Sort([](const ATileActor& A, const ATileActor& B)
+		{
+			if (A.TileData.Suit != B.TileData.Suit)
+				return A.TileData.Suit < B.TileData.Suit;
+			return A.TileData.Value < B.TileData.Value;
+		});
+
 	const int32 DiscardIdx = DiscardTiles[PlayerIndex].Num();
 	DiscardTiles[PlayerIndex].Add(ToDiscard);
-
 	ToDiscard->SetFaceUp(true);
-
 	MoveTileToDiscard(ToDiscard, PlayerIndex, DiscardIdx);
-
 	RefreshHandLayout(PlayerIndex);
 
 }
@@ -175,7 +180,7 @@ void AMahjongVisualManager::RefreshHandLayout(int32 PlayerIndex)
 		// Same formula as GetHandTileTransform — no centering
 		FVector Loc = Origin.GetLocation() + Right * (i * TileSpacing);
 		FTransform Target(FinalRot, Loc, Origin.GetScale3D());
-		PHand[i]->MoveTo(Target, 0.15f);
+		PHand[i]->MoveTo(Target, 0.5f);
 	}
 }
 
@@ -190,7 +195,7 @@ void AMahjongVisualManager::MoveTileToDiscard(ATileActor* Actor, int32 PlayerInd
 
 	// Two-stage move: up to arc peak, then down to target.
 	// For simplicity we do a single lerp; replace with a spline if you want a true arc.
-	Actor->MoveTo(Target, 0.3f);
+	Actor->MoveTo(Target, 1.0f);
 }
 
 void AMahjongVisualManager::ClearAllTileActors()
@@ -219,12 +224,6 @@ void AMahjongVisualManager::Tick(float DeltaTime)
 
 ATileActor* AMahjongVisualManager::SpawnTileActor(const FTileData& Tile, FVector Location, bool bFaceUp, FRotator Rotation)
 {
-	if (!TileBackMesh)
-	{
-		UE_LOG(LogTemp, Error, TEXT("SpawnTileActor: TileBackMesh is null"));
-		return nullptr;
-	}
-
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
@@ -233,13 +232,12 @@ ATileActor* AMahjongVisualManager::SpawnTileActor(const FTileData& Tile, FVector
 
 	if (!Actor) return nullptr;
 
-	// Always look up front visuals — InitTile needs them regardless of face direction
 	UStaticMesh* FrontMesh = nullptr;
 	UMaterialInterface* FrontMat = nullptr;
 	GetTileVisuals(Tile, FrontMesh, FrontMat);
 
-	Actor->InitTile(Tile, FrontMesh, FrontMat, TileBackMesh);
-	Actor->SetFaceUp(bFaceUp); // rotation handles which face shows
+	Actor->InitTile(Tile, FrontMesh, FrontMat);
+	Actor->SetFaceUp(bFaceUp);
 	return Actor;
 }
 

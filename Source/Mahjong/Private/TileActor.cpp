@@ -8,34 +8,20 @@ ATileActor::ATileActor()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
-	TileBack = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TileBack"));
-	RootComponent = TileBack;
-
 	TileFront = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TileFront"));
-	TileFront->SetupAttachment(TileBack); // front is a child of back
-	// Offset the front to sit flush on top of the back piece.
+	RootComponent = TileFront;
+
 	// Adjust Z to match your asset's thickness.
-	TileFront->SetRelativeLocation(FVector(0.f, 0.f, 2.f));
+	//TileFront->SetRelativeLocation(FVector(0.f, 0.f, 2.f));
 
 }
 
-void ATileActor::InitTile(const FTileData& InTileData,UStaticMesh* InFrontMesh,UMaterialInterface* InFrontMaterial,UStaticMesh* InBackMesh)
+void ATileActor::InitTile(const FTileData& InTileData,UStaticMesh* InFrontMesh,UMaterialInterface* InFrontMaterial)
 {
 	TileData = InTileData;
 
-	if (InBackMesh)
-	{
-		TileBack->SetStaticMesh(InBackMesh);
-		TileBack->SetRelativeLocation(FVector::ZeroVector);
-		TileBack->SetRelativeRotation(FRotator::ZeroRotator);
-	}
-
 	if (InFrontMesh)
-	{
 		TileFront->SetStaticMesh(InFrontMesh);
-		TileFront->SetRelativeLocation(FVector::ZeroVector);
-		//TileFront->SetRelativeRotation(FRotator::ZeroRotator);
-	}
 
 	if (InFrontMaterial)
 		TileFront->SetMaterial(0, InFrontMaterial);

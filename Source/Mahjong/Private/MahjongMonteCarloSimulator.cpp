@@ -305,19 +305,15 @@ TPair<int32, int32> FMahjongMonteCarloSimulator::RunOneSimulation(const FMonteCa
 	if (UnknownList.Num() == 0)
 		return { -1, 0 };
 
-	//shuffle unknown tiles
+	// Shuffle unknown tiles
 	for (int32 i = UnknownList.Num() - 1; i > 0; --i)
-	{
 		UnknownList.Swap(i, Rand.RandRange(0, i));
-	}
 
+	// Deal hands
 	TArray<TArray<uint8>> Hands;
 	Hands.SetNum(N);
-
 	for (auto& H : Hands)
-	{
 		H.Init(0, 34);
-	}
 
 	Hands[Me] = MyHand13;
 
@@ -330,23 +326,16 @@ TPair<int32, int32> FMahjongMonteCarloSimulator::RunOneSimulation(const FMonteCa
 		const int32 HandSize = 13 - Melds * 3;
 
 		for (int32 t = 0; t < HandSize && Cursor < UnknownList.Num(); ++t)
-		{
-			//lowkey chopped
 			Hands[p][UnknownList[Cursor++]]++;
-		}
 	}
 
+	// Remaining tiles become the wall
 	TArray<int32> Wall;
 	Wall.Reserve(UnknownList.Num() - Cursor);
-
 	while (Cursor < UnknownList.Num())
-	{
 		Wall.Add(UnknownList[Cursor++]);
-	}
 
-	//caps to amount of wall tiles remaining
 	const int32 MaxWallUse = FMath::Min(Wall.Num(), Input.WallRemaining);
-
 
 	int32 WallPos = 0;
 	int32 Current = (Me + 1) % N;
@@ -354,42 +343,38 @@ TPair<int32, int32> FMahjongMonteCarloSimulator::RunOneSimulation(const FMonteCa
 
 	while (WallPos < MaxWallUse)
 	{
-
 		const int32 Drawn = Wall[WallPos++];
 		Hands[Current][Drawn]++;
 
-		//tsumo check
+		// Tsumo check
 		if (FShantenCalculator::Calculate(Hands[Current]) == -1)
-		{
-			return { Current,MyTurnCount };
-		}
+			return { Current, MyTurnCount };
 
-
-		//Discard
+		// Discard
 		const int32 DiscardIdx = GreedyDiscardIndex(Hands[Current]);
 		Hands[Current][DiscardIdx]--;
 
+		// Ron check — modify in place instead of copying
 		for (int32 p = 0; p < N; ++p)
 		{
 			if (p == Current) continue;
 
-			TArray<uint8> Test = Hands[p];
-			Test[DiscardIdx]++;
-			if (FShantenCalculator::Calculate(Test) == -1)
-			{
+			Hands[p][DiscardIdx]++;
+			const bool bRon = (FShantenCalculator::Calculate(Hands[p]) == -1);
+			Hands[p][DiscardIdx]--;
+
+			if (bRon)
 				return { p, MyTurnCount };
-			}
-
-
 		}
 
 		Current = (Current + 1) % N;
 		if (Current == Me) ++MyTurnCount;
 	}
-		return { -1, MyTurnCount };
+
+	return { -1, MyTurnCount };
 }
 
-int32 FMahjongMonteCarloSimulator::GreedyDiscardIndex(const TArray<uint8>& Hand34)
+int32 FMahjongMonteCarloSimulator::GreedyDiscardIndex(TArray<uint8>& Hand34)
 {
 	int32 Best = -1;
 	int32 BestShan = INT32_MAX;
@@ -398,9 +383,9 @@ int32 FMahjongMonteCarloSimulator::GreedyDiscardIndex(const TArray<uint8>& Hand3
 	{
 		if (Hand34[i] == 0) continue;
 
-		TArray<uint8> Test = Hand34;
-		Test[i]--;
-		const int32 Shan = FShantenCalculator::Calculate(Test);
+		Hand34[i]--;
+		const int32 Shan = FShantenCalculator::Calculate(Hand34);
+		Hand34[i]++; // undo
 
 		if (Shan < BestShan)
 		{

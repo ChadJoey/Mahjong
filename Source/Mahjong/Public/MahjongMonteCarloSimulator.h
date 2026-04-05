@@ -52,6 +52,6 @@ private:
    // Returns {winning_player_index, turns_elapsed}; winner==-1 means ryuukyoku.
 	static TPair<int32, int32> RunOneSimulation(const FMonteCarloInput& Input, const TArray<uint8>& MyHand13, TArray<int32> UnknownList, FRandomStream& Rand);
 
-	static int32 GreedyDiscardIndex(const TArray<uint8>& Hand34);
+	static int32 GreedyDiscardIndex(TArray<uint8>& Hand34);
 
 };

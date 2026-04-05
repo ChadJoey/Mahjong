@@ -31,7 +31,7 @@ public:
 
 private:
 
-	static TMap<TArray<uint8>, int32> BuildShantenTableForShape(int32 NemMelds,bool bHasPair ,bool bAllowSequences);
+	static TArray<uint8> BuildShantenTableForShape(int32 NemMelds,bool bHasPair ,bool bAllowSequences);
 
 	
 	static int32 CalculateStandardShanten(const TArray<uint8>& Tiles34);// Standard shanten algorithm
@@ -52,9 +52,9 @@ private:
 	static void BuildConfigsRecursive(TArray<uint8> CurrentConfig, int32 TripletsLeft, bool bPairNeeded, int32 StartPos,bool bAllowSequences, TArray<TArray<uint8>>& OutResults);
 
 	static void DebugPrintTableStats();
-
+	static uint32 EncodeConfig(const TArray<uint8>& Config);
 
 };
 
 
-static TMap<TArray<uint8>, int32> ShantenTables[5][2][2];
+static TArray<uint8> ShantenTables[5][2][2];

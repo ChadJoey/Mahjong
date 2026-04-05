@@ -52,8 +52,7 @@ void FShantenCalculator::InitializeTables()
 
 void FShantenCalculator::InitializeTablesOld()
 {
-
-	UE_LOG(LogTemp, Log, TEXT("	Building shanten tables..."));
+	UE_LOG(LogTemp, Log, TEXT("Building shanten tables..."));
 
 	for (int32 NumMelds = 0; NumMelds <= 4; ++NumMelds)
 	{
@@ -61,14 +60,13 @@ void FShantenCalculator::InitializeTablesOld()
 		{
 			bool bHasPair = (HasPair == 1);
 
-			ShantenTables[NumMelds][HasPair][1] = BuildShantenTableForShape(NumMelds, static_cast<bool>(HasPair), true); // suit table
-			ShantenTables[NumMelds][HasPair][0] = BuildShantenTableForShape(NumMelds, static_cast<bool>(HasPair), false); // honor table
+			ShantenTables[NumMelds][HasPair][1] = BuildShantenTableForShape(NumMelds, static_cast<bool>(HasPair), true);
+			ShantenTables[NumMelds][HasPair][0] = BuildShantenTableForShape(NumMelds, static_cast<bool>(HasPair), false);
 
-			UE_LOG(LogTemp, Log, TEXT("  Built table [%d melds, %s pair] - Suit: %d entries, Honor: %d entries"),
-				NumMelds, bHasPair ? TEXT("with") : TEXT("without"),
-				ShantenTables[NumMelds][HasPair][1].Num(),
-				ShantenTables[NumMelds][HasPair][0].Num());
-
+			UE_LOG(LogTemp, Log, TEXT("  Built table [%d melds, %s pair] - %.2f MB each"),
+				NumMelds,
+				bHasPair ? TEXT("with") : TEXT("without"),
+				(ShantenTables[NumMelds][HasPair][0].Num() * sizeof(uint8)) / (1024.f * 1024.f));
 		}
 	}
 }
@@ -184,16 +182,6 @@ static bool IsValidConfiguration(const TArray<uint8>& Config)
 }
 
 
-// Helper: Hash a config for faster lookups
-static uint64 GetConfigHash(const TArray<uint8>& Config)
-{
-	uint64 Hash = 0;
-	for (int32 i = 0; i < Config.Num() && i < 9; ++i)
-	{
-		Hash = Hash * 5 + Config[i];
-	}
-	return Hash;
-}
 
 
 TArray<TArray<uint8>> FShantenCalculator::GetAdjacentConfigs(const TArray<uint8> Config)
@@ -278,51 +266,44 @@ void FShantenCalculator::BuildConfigsRecursive(TArray<uint8> CurrentConfig, int3
 	}
 }
 
-TMap<TArray<uint8>, int32> FShantenCalculator::BuildShantenTableForShape(int32 NumMelds, bool bHasPair,bool bAllowSequences)
+TArray<uint8> FShantenCalculator::BuildShantenTableForShape(int32 NumMelds, bool bHasPair,bool bAllowSequences)
 {
-	TMap<TArray<uint8>, int32> Table;
+	constexpr int32 TableSize = 1953125; // 5^9
+
+	TArray<uint8> Table;
+	Table.Init(0xFF, TableSize);
+
 	TQueue<TArray<uint8>> Queue;
 
-	// Get winning configurations
-	TArray<TArray<uint8>> WinningConfigs = EnumerateWinningConfigsForShape(
-		NumMelds, bHasPair, bAllowSequences);
-
-	// Initialize winning configs
+	// Seed BFS with all winning configurations (shanten = 0)
+	TArray<TArray<uint8>> WinningConfigs = EnumerateWinningConfigsForShape(NumMelds, bHasPair, bAllowSequences);
 	for (const TArray<uint8>& Config : WinningConfigs)
 	{
-		Table.Add(Config, 0);
-		Queue.Enqueue(Config);
+		uint32 Key = EncodeConfig(Config);
+		if (Table[Key] == 0xFF) // guard against duplicate winning configs
+		{
+			Table[Key] = 0;
+			Queue.Enqueue(Config);
+		}
 	}
-
-	// BFS with additional optimizations
-	TSet<uint64> VisitedHashes; // Track visited configs by hash for speed
 
 	while (!Queue.IsEmpty())
 	{
 		TArray<uint8> CurrentConfig;
 		Queue.Dequeue(CurrentConfig);
 
-		int32 CurrentShanten = Table[CurrentConfig];
+		uint8 CurrentShanten = Table[EncodeConfig(CurrentConfig)];
 
-		// Optimization 1: Stop at max shanten
 		if (CurrentShanten >= 8)
 			continue;
 
-		TArray<TArray<uint8>> Neighbors = GetAdjacentConfigs(CurrentConfig);
-
-		for (const TArray<uint8>& Neighbor : Neighbors)
+		for (const TArray<uint8>& Neighbor : GetAdjacentConfigs(CurrentConfig))
 		{
-			// Optimization 2: Hash check before full map lookup
-			uint64 Hash = GetConfigHash(Neighbor);
-
-			if (VisitedHashes.Contains(Hash))
-				continue;
-
-			if (!Table.Contains(Neighbor))
+			uint32 Key = EncodeConfig(Neighbor);
+			if (Table[Key] == 0xFF) // not yet visited
 			{
-				Table.Add(Neighbor, CurrentShanten + 1);
+				Table[Key] = CurrentShanten + 1;
 				Queue.Enqueue(Neighbor);
-				VisitedHashes.Add(Hash);
 			}
 		}
 	}
@@ -446,24 +427,11 @@ int32 FShantenCalculator::CalculateShantenForDistribution(const TArray<uint8>& M
 int32 FShantenCalculator::GetShantenForShape(const TArray<uint8>& TileConfig, int32 NumMelds, bool bHasPair, bool bAllowSequences)
 {
 	if (NumMelds < 0 || NumMelds > 4)
-	{
 		return 8;
-	}
 
-	int32 PairIndex = bHasPair ? 1 : 0;
-	int32 SeqIndex = bAllowSequences ? 1 : 0;
-
-	const TMap<TArray<uint8>, int32>& Table = ShantenTables[NumMelds][PairIndex][SeqIndex];
-
-	const int32* FoundShanten = Table.Find(TileConfig);
-
-	if (FoundShanten)
-	{
-		return *FoundShanten;
-	}
-
-
-	return 8;
+	uint32 Key = EncodeConfig(TileConfig);
+	uint8 Val = ShantenTables[NumMelds][bHasPair ? 1 : 0][bAllowSequences ? 1 : 0][Key];
+	return (Val == 0xFF) ? 8 : (int32)Val;
 }
 
 
@@ -471,30 +439,49 @@ void FShantenCalculator::DebugPrintTableStats()
 {
 	UE_LOG(LogTemp, Log, TEXT("=== Shanten Table Statistics ==="));
 
-	int64 TotalEntries = 0;
-	int64 TotalMemoryBytes = 0;
+	constexpr int32 TableSize = 1953125; // 5^9
+	constexpr int32 NumTables = 5 * 2 * 2; // 20 tables
+
+	int64 TotalReachable = 0;
 
 	for (int32 NumMelds = 0; NumMelds <= 4; ++NumMelds)
 	{
 		for (int32 HasPair = 0; HasPair <= 1; ++HasPair)
 		{
-			int32 SuitEntries = ShantenTables[NumMelds][HasPair][1].Num();
-			int32 HonorEntries = ShantenTables[NumMelds][HasPair][0].Num();
+			int32 SuitReachable = 0;
+			int32 HonorReachable = 0;
 
-			UE_LOG(LogTemp, Log, TEXT("[%d melds, %s pair] Suit: %d, Honor: %d"),
+			for (int32 i = 0; i < TableSize; ++i)
+			{
+				if (ShantenTables[NumMelds][HasPair][1][i] != 0xFF) SuitReachable++;
+				if (ShantenTables[NumMelds][HasPair][0][i] != 0xFF) HonorReachable++;
+			}
+
+			UE_LOG(LogTemp, Log, TEXT("[%d melds, %s pair] Reachable — Suit: %d, Honor: %d"),
 				NumMelds,
 				HasPair ? TEXT("with") : TEXT("without"),
-				SuitEntries,
-				HonorEntries);
+				SuitReachable, HonorReachable);
 
-			TotalEntries += SuitEntries + HonorEntries;
+			TotalReachable += SuitReachable + HonorReachable;
 		}
 	}
 
-	// Rough memory estimate (TMap has overhead)
-	TotalMemoryBytes = TotalEntries * 32; // ~32 bytes per entry with overhead
+	const int64 TotalSlots = (int64)NumTables * TableSize;
+	const float MemoryMB = (TotalSlots * sizeof(uint8)) / (1024.f * 1024.f);
+	const float FillPct = 100.f * TotalReachable / TotalSlots;
 
-	UE_LOG(LogTemp, Log, TEXT("Total entries: %lld"), TotalEntries);
-	UE_LOG(LogTemp, Log, TEXT("Estimated memory: %.2f MB"),
-		TotalMemoryBytes / (1024.0f * 1024.0f));
+	UE_LOG(LogTemp, Log, TEXT("Total slots  : %lld"), TotalSlots);
+	UE_LOG(LogTemp, Log, TEXT("Reachable    : %lld (%.1f%% fill)"), TotalReachable, FillPct);
+	UE_LOG(LogTemp, Log, TEXT("Memory usage : %.2f MB"), MemoryMB);
+}
+
+uint32 FShantenCalculator::EncodeConfig(const TArray<uint8>& Config)
+{
+	uint32 Key = 0, Base = 1;
+	for (int32 i = 0; i < 9; ++i)
+	{
+		Key += Config[i] * Base;
+		Base *= 5;
+	}
+	return Key; // max value: 5^9 - 1 = 1,953,124
 }

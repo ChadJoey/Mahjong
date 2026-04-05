@@ -35,9 +35,17 @@ private:
 
 	
 	static int32 CalculateStandardShanten(const TArray<uint8>& Tiles34);// Standard shanten algorithm
+	static int32 CalculateStandardShantenOLD(const TArray<uint8>& Tiles34);
 	static int32 CalculateChiitoitsuShanten(const TArray<uint8>& Tiles34);	// Seven pairs
 	static int32 CalculateKokushiShanten(const TArray<uint8>& Tiles34);	// Kokushi
 
+
+
+	static int32 CalculateShantenForDistribution(
+		const uint8* ManTiles, const uint8* PinTiles,
+		const uint8* SouTiles, const uint8* HonorTiles,
+		int32 ManMelds, int32 PinMelds, int32 SouMelds, int32 HonorMelds,
+		int32 PairSuit);//more optimised
 
 	static int32 CalculateShantenForDistribution(
 		const TArray<uint8>& ManTiles, const TArray<uint8>& PinTiles,
@@ -46,6 +54,7 @@ private:
 		int32 PairSuit);
 
 	static int32 GetShantenForShape(const TArray<uint8>& TileConfig, int32 NumMelds, bool bHasPair, bool bAllowSequences);
+	static int32 GetShantenForShape(const uint8* TileConfig, int32 NumMelds, bool bHasPair, bool bAllowSequences); // more optimised
 
 	static TArray<TArray<uint8>> EnumerateWinningConfigsForShape(int32 NumMelds, bool bHasPair, bool bAllowSequences);
 	static TArray<TArray<uint8>> GetAdjacentConfigs(const TArray<uint8> configs);
@@ -53,6 +62,7 @@ private:
 
 	static void DebugPrintTableStats();
 	static uint32 EncodeConfig(const TArray<uint8>& Config);
+	static uint32 EncodeConfig(const uint8* Config);
 
 };
 

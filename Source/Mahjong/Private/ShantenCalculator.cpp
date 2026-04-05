@@ -311,7 +311,44 @@ TArray<uint8> FShantenCalculator::BuildShantenTableForShape(int32 NumMelds, bool
 	return Table;
 }
 
+
 int32 FShantenCalculator::CalculateStandardShanten(const TArray<uint8>& Tiles34)
+{
+	// Stack allocated — no heap involvement at all
+	uint8 ManTiles[9], PinTiles[9], SouTiles[9], HonorTiles[9];
+
+	FMemory::Memcpy(ManTiles, &Tiles34[0], 9);
+	FMemory::Memcpy(PinTiles, &Tiles34[9], 9);
+	FMemory::Memcpy(SouTiles, &Tiles34[18], 9);
+	FMemory::Memcpy(HonorTiles, &Tiles34[27], 7);
+	HonorTiles[7] = 0;
+	HonorTiles[8] = 0;
+
+	int32 MinBFSSum = INT32_MAX;
+
+	for (int32 m0 = 0; m0 <= 4; ++m0)
+		for (int32 m1 = 0; m1 <= 4 - m0; ++m1)
+			for (int32 m2 = 0; m2 <= 4 - m0 - m1; ++m2)
+			{
+				int32 m3 = 4 - m0 - m1 - m2;
+				for (int32 PairSuit = -1; PairSuit < 4; ++PairSuit)
+				{
+					int32 BFSSum = CalculateShantenForDistribution(
+						ManTiles, PinTiles, SouTiles, HonorTiles,
+						m0, m1, m2, m3, PairSuit);
+
+					MinBFSSum = FMath::Min(MinBFSSum, BFSSum);
+				}
+			}
+
+	if (MinBFSSum == 0) return -1;
+	if (MinBFSSum == INT32_MAX) return 8;
+
+	return (MinBFSSum - 1) / 2;
+}
+
+
+int32 FShantenCalculator::CalculateStandardShantenOLD(const TArray<uint8>& Tiles34)
 {
 	// Split into 4 suits
 	TArray<uint8> ManTiles, PinTiles, SouTiles, HonorTiles;
@@ -424,6 +461,22 @@ int32 FShantenCalculator::CalculateShantenForDistribution(const TArray<uint8>& M
 	return TotalShanten;
 }
 
+
+
+int32 FShantenCalculator::CalculateShantenForDistribution(
+	const uint8* ManTiles, const uint8* PinTiles,
+	const uint8* SouTiles, const uint8* HonorTiles,
+	int32 ManMelds, int32 PinMelds, int32 SouMelds, int32 HonorMelds,
+	int32 PairSuit)
+{
+	return
+		GetShantenForShape(ManTiles, ManMelds, PairSuit == 0, true) +
+		GetShantenForShape(PinTiles, PinMelds, PairSuit == 1, true) +
+		GetShantenForShape(SouTiles, SouMelds, PairSuit == 2, true) +
+		GetShantenForShape(HonorTiles, HonorMelds, PairSuit == 3, false);
+}
+
+
 int32 FShantenCalculator::GetShantenForShape(const TArray<uint8>& TileConfig, int32 NumMelds, bool bHasPair, bool bAllowSequences)
 {
 	if (NumMelds < 0 || NumMelds > 4)
@@ -433,6 +486,17 @@ int32 FShantenCalculator::GetShantenForShape(const TArray<uint8>& TileConfig, in
 	uint8 Val = ShantenTables[NumMelds][bHasPair ? 1 : 0][bAllowSequences ? 1 : 0][Key];
 	return (Val == 0xFF) ? 8 : (int32)Val;
 }
+
+
+int32 FShantenCalculator::GetShantenForShape(const uint8* TileConfig, int32 NumMelds, bool bHasPair, bool bAllowSequences)
+{
+	if (NumMelds < 0 || NumMelds > 4)
+		return 8;
+
+	uint8 Val = ShantenTables[NumMelds][bHasPair ? 1 : 0][bAllowSequences ? 1 : 0][EncodeConfig(TileConfig)];
+	return (Val == 0xFF) ? 8 : (int32)Val;
+}
+
 
 
 void FShantenCalculator::DebugPrintTableStats()
@@ -484,4 +548,16 @@ uint32 FShantenCalculator::EncodeConfig(const TArray<uint8>& Config)
 		Base *= 5;
 	}
 	return Key; // max value: 5^9 - 1 = 1,953,124
+}
+
+
+uint32 FShantenCalculator::EncodeConfig(const uint8* Config)
+{
+	uint32 Key = 0, Base = 1;
+	for (int32 i = 0; i < 9; ++i)
+	{
+		Key += Config[i] * Base;
+		Base *= 5;
+	}
+	return Key;
 }

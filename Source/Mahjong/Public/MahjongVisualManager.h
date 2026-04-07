@@ -70,8 +70,10 @@ public:
 
     // Gap between tiles in the discard grid
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mahjong|Layout")
-    float DiscardSpacing = 7.f;
+    float DiscardSpacingX = 15.f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mahjong|Layout")
+    float DiscardSpacingY = 15.f;
     // Discard tiles per row before wrapping (standard = 6)
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mahjong|Layout")
     int32 DiscardsPerRow = 6;

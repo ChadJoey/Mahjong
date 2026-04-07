@@ -71,7 +71,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mahjong")
 	EMahjongSeat Seat;
 
-	std::atomic<int> Simulations = 500;
+	std::atomic<int> Simulations = 1500;
 
 protected:
 	virtual void BeginPlay() override;

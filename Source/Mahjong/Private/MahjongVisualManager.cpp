@@ -269,8 +269,8 @@ FTransform AMahjongVisualManager::GetDiscardTransform(int32 PlayerIndex, int32 D
 	const int32 Row = DiscardIndex / DiscardsPerRow;
 
 	const FVector Loc = Origin.GetLocation()
-		+ Right * (Col * DiscardSpacing)
-		+ Forward * (Row * DiscardSpacing);
+		+ Right * (Col * DiscardSpacingX)
+		- Forward * (Row * DiscardSpacingY);
 
 	const FRotator Correction(TileOrientationCorrection);
 	const FQuat FinalRot = Origin.GetRotation() * Correction.Quaternion();

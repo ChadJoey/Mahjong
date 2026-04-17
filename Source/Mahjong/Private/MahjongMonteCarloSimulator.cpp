@@ -141,19 +141,6 @@ TArray<FMonteCarloResult> FMahjongMonteCarloSimulator::EvaluateDiscards(const FM
 
 	const int32 NumC = Candidates.Num();
 
-	// ── 3. Flat 2D parallel: (Candidate × SimBatch) ───────────────────────
-	//
-	//  Problem with one-task-per-candidate: scaling NumSimulations to 500+
-	//  leaves the entire inner sim loop serial — one core per candidate,
-	//  wasting all remaining cores while it churns through thousands of sims.
-	//
-	//  Solution: split each candidate's sims into batches so the full core
-	//  budget is used regardless of candidate count or sim count.
-	//
-	//  Work layout: TotalTasks = NumC × NumBatches
-	//    FlatIdx = CIdx * NumBatches + BIdx
-	//  Each task writes to a unique flat slot → zero contention, no atomics.
-
 	// Target ~4 tasks per logical core for good load-balancing.
 	const int32 NumCores = FMath::Max(1, FPlatformMisc::NumberOfCoresIncludingHyperthreads());
 	const int32 NumBatches = FMath::Max(1, (NumCores * 4 + NumC - 1) / NumC);
